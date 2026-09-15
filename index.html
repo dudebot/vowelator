@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vowelator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2314110e'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-size='18' fill='%23ff5a36'%3Ev%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <h1>vowel<span>ator</span></h1>
+        <p>Drop a rant. Keep the howl. Consonants, breaths, and the inward gasp get chamfered off — vowels stay. Nothing leaves this machine.</p>
+      </div>
+      <div class="header-actions">
+        <label class="file-btn">
+          Open file
+          <input id="file" type="file" accept="audio/*,video/*,.mp4,.mov,.webm,.mkv,.mp3,.wav,.ogg,.flac,.m4a">
+        </label>
+        <button id="demo" type="button">Demo vowels</button>
+      </div>
+    </header>
+
+    <div id="drop" class="drop">
+      <strong>Drop audio or video here</strong>
+      wav, mp3, m4a, mp4, webm — decoded locally
+    </div>
+
+    <div class="layout hidden" id="workspace">
+      <div>
+        <div class="panel viz">
+          <label>Source <span id="meta"></span></label>
+          <canvas id="wave"></canvas>
+          <label>Spectrogram</label>
+          <canvas id="spec"></canvas>
+          <label>Vowels only</label>
+          <canvas id="outwave"></canvas>
+          <div class="controls">
+            <label>Erosion <output id="erosionOut">20 ms</output>
+              <input id="erosion" type="range" min="0" max="50" value="20">
+            </label>
+            <label>Fade <output id="fadeOut">6 ms</output>
+              <input id="fade" type="range" min="0" max="20" value="6">
+            </label>
+            <label>Min nucleus <output id="minOut">40 ms</output>
+              <input id="minDur" type="range" min="20" max="120" value="40">
+            </label>
+          </div>
+          <div class="transport">
+            <button id="playSrc" type="button">Play source</button>
+            <button id="playVowels" class="primary" type="button">Play vowels</button>
+            <button id="stop" type="button">Stop</button>
+            <button id="export" type="button">Export cursed.wav</button>
+          </div>
+          <div class="progress" id="progress"><div></div></div>
+          <div class="status" id="status"></div>
+        </div>
+      </div>
+      <aside class="panel side">
+        <h2>Keep</h2>
+        <div class="chips" id="chips"></div>
+        <h2 style="margin-top:18px">Nuclei</h2>
+        <div class="segments" id="segments"></div>
+      </aside>
+    </div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
