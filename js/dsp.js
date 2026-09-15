@@ -123,17 +123,17 @@ function pickFormants(envelope, sr, n) {
   return { f1, f2, f3 };
 }
 
-function medianFilter(arr, radius) {
-  const n = arr.length;
-  const tmp = new Uint8Array(n);
-  tmp.set(arr);
+/** Close 1-frame silence holes inside a vowel, never promote frication. */
+function fillTinySilenceHoles(kind, reject, radius) {
+  const n = kind.length;
+  const tmp = new Uint8Array(kind);
   for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - radius);
-    const b = Math.min(n - 1, i + radius);
-    const vals = [];
-    for (let j = a; j <= b; j++) vals.push(tmp[j]);
-    vals.sort((x, y) => x - y);
-    arr[i] = vals[vals.length >> 1];
+    if (tmp[i] !== 0 || reject[i]) continue;
+    let vowelNeighbors = 0;
+    for (let j = Math.max(0, i - radius); j <= Math.min(n - 1, i + radius); j++) {
+      if (j !== i && tmp[j] === 2) vowelNeighbors++;
+    }
+    if (vowelNeighbors >= 2) kind[i] = 2;
   }
 }
 
@@ -157,6 +157,9 @@ export function analyze(samples, sampleRate, onProgress) {
   const f3 = new Float32Array(nFrames);
   const centroid = new Float32Array(nFrames);
   const hnr = new Float32Array(nFrames);
+  const sibilance = new Float32Array(nFrames);
+  const zcr = new Float32Array(nFrames);
+  const reject = new Uint8Array(nFrames);
 
   const re = new Float32Array(n);
   const im = new Float32Array(n);
@@ -166,29 +169,37 @@ export function analyze(samples, sampleRate, onProgress) {
   const binHz = ANALYSIS_RATE / n;
   const qMin = Math.round(ANALYSIS_RATE / 420);
   const qMax = Math.min(n / 2 - 1, Math.round(ANALYSIS_RATE / 65));
+  const highBin = Math.max(2, Math.round(4000 / binHz));
 
   for (let fi = 0; fi < nFrames; fi++) {
     const off = fi * HOP;
     re.fill(0);
     im.fill(0);
-    let prev = off > 0 ? x[off - 1] : 0;
     let rawE = 0;
+    let crossings = 0;
+    let prevS = 0;
     for (let i = 0; i < n; i++) {
       const s = x[off + i] || 0;
       rawE += s * s;
-      const pre = s - 0.97 * prev;
-      prev = s;
-      frame[i] = pre * window[i];
-      re[i] = frame[i];
+      if (i && (s >= 0) !== (prevS >= 0)) crossings++;
+      prevS = s;
+      re[i] = s * window[i];
     }
+    energy[fi] = rawE / n;
+    zcr[fi] = crossings / n;
     fft.forward(re, im);
 
     let sumMag = 0;
     let sumLog = 0;
     let weighted = 0;
+    let high = 0;
+    let totalP = 0;
     const half = n / 2;
     for (let k = 0; k < half; k++) {
-      const m = Math.hypot(re[k], im[k]);
+      const p = re[k] * re[k] + im[k] * im[k];
+      totalP += p;
+      if (k >= highBin) high += p;
+      const m = Math.sqrt(p);
       if (k > 0) {
         sumMag += m;
         sumLog += Math.log(m + 1e-12);
@@ -199,10 +210,10 @@ export function analyze(samples, sampleRate, onProgress) {
     logMag[half] = Math.log(Math.hypot(re[half], im[half]) + 1e-12);
     for (let k = 1; k < half; k++) logMag[n - k] = logMag[k];
 
-    energy[fi] = rawE / n;
     const bins = half - 1;
     flatness[fi] = sumMag > 0 ? Math.exp(sumLog / bins) / (sumMag / bins) : 1;
     centroid[fi] = sumMag > 0 ? weighted / sumMag : 0;
+    sibilance[fi] = totalP > 0 ? high / totalP : 0;
 
     re.set(logMag);
     im.fill(0);
@@ -220,17 +231,24 @@ export function analyze(samples, sampleRate, onProgress) {
     hnr[fi] = bestC;
     f0[fi] = bestQ > 0 ? ANALYSIS_RATE / bestQ : 0;
 
+    let prev = off > 0 ? x[off - 1] : 0;
+    for (let i = 0; i < n; i++) {
+      const s = x[off + i] || 0;
+      const pre = s - 0.97 * prev;
+      prev = s;
+      frame[i] = pre * window[i];
+    }
     const env = lpcEnvelope(frame, lpcOrder, n, fft, re, im);
     const formants = pickFormants(env, ANALYSIS_RATE, n);
     f1[fi] = formants.f1;
     f2[fi] = formants.f2;
     f3[fi] = formants.f3;
 
-    const pitchOk = bestC > 0.07;
-    const hasFormants = formants.f1 > 200 && formants.f2 > formants.f1 + 150;
-    // Screams are bright (high flatness) but still periodic. Don't require a
-    // "pretty" harmonic spectrum once a pitch peak is present.
-    voiced[fi] = pitchOk && (hasFormants || flatness[fi] < 0.72) ? 1 : 0;
+    const pitchOk = bestC > 0.08;
+    const hiss = sibilance[fi] > 0.32 || zcr[fi] > 0.18;
+    reject[fi] = hiss ? 1 : 0;
+    // Keep/drop is periodicity minus frication. Formants are labels only.
+    voiced[fi] = pitchOk && !hiss ? 1 : 0;
 
     if (onProgress && (fi & 255) === 0) onProgress(fi / Math.max(1, nFrames));
   }
@@ -244,15 +262,12 @@ export function analyze(samples, sampleRate, onProgress) {
 
   const kind = new Uint8Array(nFrames);
   for (let i = 0; i < nFrames; i++) {
-    if (energy[i] < silenceThr) {
-      kind[i] = 0;
-    } else if (voiced[i]) {
-      kind[i] = hnr[i] > 0.06 ? 2 : 3;
-    } else {
-      kind[i] = 1;
-    }
+    if (energy[i] < silenceThr) kind[i] = 0;
+    else if (reject[i]) kind[i] = 1;
+    else if (voiced[i] && hnr[i] > 0.07) kind[i] = 2;
+    else kind[i] = 1;
   }
-  medianFilter(kind, 2);
+  fillTinySilenceHoles(kind, reject, 1);
 
   return {
     sampleRate: ANALYSIS_RATE,
@@ -271,6 +286,9 @@ export function analyze(samples, sampleRate, onProgress) {
     centroid,
     hnr,
     kind,
+    sibilance,
+    zcr,
+    reject,
     silenceThr,
     speech,
     samples: x,

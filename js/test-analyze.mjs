@@ -40,7 +40,13 @@ for (const e of expected) {
 console.log(`hits ${hits}/${expected.length}`);
 assert(hits >= 5, `too few target vowels classified (${hits})`);
 
-const kept = runs.map((r) => ({ ...r, keep: r.kind === "vowel" }));
+const sLeak = vowels.some((v) => {
+  const overlap = Math.min(v.end, 2.55) - Math.max(v.start, 2.16);
+  return overlap > 0.05;
+});
+assert(!sLeak, "sibilant /s/ burst leaked into a vowel nucleus");
+
+const kept = runs.map((r) => ({ ...r, keep: true }));
 const out = concatenate(samples, sampleRate, kept, 0.006);
 const ratio = out.length / samples.length;
 console.log("kept ratio", ratio.toFixed(3), out.length, samples.length);

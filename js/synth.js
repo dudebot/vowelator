@@ -99,7 +99,7 @@ export function makeDemoSamples() {
   synthNoise(samples, sr, 0.95, 1.08, 1800, 0.12);           // d
   synthNoise(samples, sr, 1.35, 1.48, 4000, 0.1);
   synthVowel(samples, sr, 1.48, 2.15, 580, 1799, 2605, 130, 0.11); // ɛ meh
-  synthNoise(samples, sr, 2.25, 2.55, 500, 0.08);            // breath
+  synthNoise(samples, sr, 2.16, 2.55, 5500, 0.55);           // sibilant /s/
   synthNoise(samples, sr, 2.7, 2.82, 3000, 0.14);
   synthVowel(samples, sr, 2.82, 3.55, 378, 997, 2343, 125, 0.13);  // u boob
   synthNoise(samples, sr, 3.7, 3.82, 2200, 0.1);

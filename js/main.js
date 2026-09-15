@@ -1,7 +1,7 @@
 import { VOWELS, colorFor } from "./vowels.js";
 import { downmix } from "./dsp.js";
 import { findNuclei, erodeRuns, applyKeep, concatenate, extractSamples } from "./slicer.js";
-import { loadMediaFile, encodeWav, downloadBlob, samplesToAudioBuffer } from "./audio-io.js";
+import { loadMediaFile, samplesToAudioBuffer, exportResult } from "./audio-io.js";
 import { makeDemoBuffer } from "./synth.js";
 import { drawWaveform, drawSpectrogram, sizeCanvas } from "./draw.js";
 
@@ -10,6 +10,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   ctx: null,
   name: "audio",
+  sourceFile: null,
   source: null,
   sourceRate: 16000,
   analysis: null,
@@ -158,7 +159,7 @@ function render() {
   const vowels = state.runs.filter((r) => r.keep).length;
   $("meta").textContent = `${state.name} · ${dur}s · ${vowels} kept`;
   if (state.analysis) {
-    setStatus(`${state.runs.length} nuclei · ${vowels} kept · erosion ${$("erosion").value} ms`);
+    setStatus(`${state.runs.length} nuclei · ${vowels} kept · trim ${$("erosion").value} ms`);
   }
   renderChips();
   renderSegments();
@@ -232,9 +233,10 @@ function playRun(run) {
   playBuffer(buf, "src", (t) => run.cutStart + t);
 }
 
-async function analyzeBuffer(audioBuffer, name) {
+async function analyzeBuffer(audioBuffer, name, sourceFile = null) {
   stopPlayback();
   state.name = name;
+  state.sourceFile = sourceFile;
   state.source = downmix(audioBuffer);
   state.sourceRate = audioBuffer.sampleRate;
   setStatus("Scanning nuclei…");
@@ -271,7 +273,7 @@ async function loadFile(file) {
     const ctx = audioCtx();
     if (ctx.state === "suspended") await ctx.resume();
     const buf = await loadMediaFile(file, ctx);
-    await analyzeBuffer(buf, file.name);
+    await analyzeBuffer(buf, file.name, file);
   } catch (err) {
     console.error(err);
     setStatus(err.message || String(err));
@@ -316,15 +318,25 @@ for (const id of ["erosion", "fade", "minDur"]) {
 $("playSrc").addEventListener("click", playSource);
 $("playVowels").addEventListener("click", playVowels);
 $("stop").addEventListener("click", stopPlayback);
-$("export").addEventListener("click", () => {
+$("export").addEventListener("click", async () => {
   const samples = outputSamples();
   if (!samples.length) {
     setStatus("Nothing to export.");
     return;
   }
-  const blob = encodeWav(samples, state.sourceRate);
-  const base = state.name.replace(/\.[^.]+$/, "");
-  downloadBlob(blob, `${base}-vowels.wav`);
+  try {
+    setStatus("Encoding…");
+    const kind = await exportResult({
+      samples,
+      sampleRate: state.sourceRate,
+      sourceFile: state.sourceFile,
+      name: state.name,
+    });
+    setStatus(`Exported .${kind}`);
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || String(err));
+  }
 });
 
 window.addEventListener("resize", () => paint());

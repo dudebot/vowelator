@@ -35,7 +35,7 @@ export function findNuclei(analysis, { minDuration = 0.04 } = {}) {
     while (j < nFrames && kind[j] === k) j++;
     const start = i * hopSec;
     const end = j * hopSec;
-    if (k !== KIND_SILENCE && end - start >= minDuration) {
+    if (k === KIND_VOWEL && end - start >= minDuration) {
       const frames = [];
       for (let f = i; f < j; f++) frames.push(frameAt(analysis, f));
       const labeled = k === KIND_VOWEL ? classifyNucleus(frames) : {
@@ -67,13 +67,12 @@ export function findNuclei(analysis, { minDuration = 0.04 } = {}) {
  * Chamfer each run inward. Never eat more than 20% of a short nucleus.
  * Fade is applied later at sample level.
  */
-export function erodeRuns(runs, erosionSec) {
-  return runs.map((run) => {
-    const dur = run.end - run.start;
-    const maxEat = Math.min(erosionSec, dur * 0.2);
-    const start = run.start + maxEat;
-    const end = Math.max(start + 0.012, run.end - maxEat);
-    return { ...run, cutStart: start, cutEnd: end };
+export function erodeRuns(runs, erosionSec, { minRemain = 0.03 } = {}) {
+  return runs.flatMap((run) => {
+    const start = run.start + erosionSec;
+    const end = run.end - erosionSec;
+    if (end - start < minRemain) return [];
+    return [{ ...run, cutStart: start, cutEnd: end }];
   });
 }
 

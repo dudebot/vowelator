@@ -41,21 +41,27 @@
           <label>Vowels only</label>
           <canvas id="outwave"></canvas>
           <div class="controls">
-            <label>Erosion <output id="erosionOut">20 ms</output>
-              <input id="erosion" type="range" min="0" max="50" value="20">
+            <label title="Cut into each vowel from both sides so leftover consonants don't sneak in.">
+              Trim edges <output id="erosionOut">40 ms</output>
+              <input id="erosion" type="range" min="0" max="250" value="40">
+              <span class="hint">shave consonants off each end</span>
             </label>
-            <label>Fade <output id="fadeOut">6 ms</output>
-              <input id="fade" type="range" min="0" max="20" value="6">
+            <label title="Fade in and out so cuts don't click.">
+              Soften cuts <output id="fadeOut">8 ms</output>
+              <input id="fade" type="range" min="0" max="40" value="8">
+              <span class="hint">fade so the splices don't pop</span>
             </label>
-            <label>Min nucleus <output id="minOut">40 ms</output>
-              <input id="minDur" type="range" min="20" max="120" value="40">
+            <label title="Drop vowel-like blips shorter than this.">
+              Ignore blips <output id="minOut">50 ms</output>
+              <input id="minDur" type="range" min="20" max="200" value="50">
+              <span class="hint">skip bursts shorter than this</span>
             </label>
           </div>
           <div class="transport">
             <button id="playSrc" type="button">Play source</button>
             <button id="playVowels" class="primary" type="button">Play vowels</button>
             <button id="stop" type="button">Stop</button>
-            <button id="export" type="button">Export cursed.wav</button>
+            <button id="export" type="button">Export</button>
           </div>
           <div class="progress" id="progress"><div></div></div>
           <div class="status" id="status"></div>
