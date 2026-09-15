@@ -5,45 +5,12 @@ export const FFT_SIZE = 512;
 export const HOP = 160; // 10 ms at 16 kHz
 export const LIFTER = 22;
 
-function lowpassTaps(taps, cutoff, sr) {
-  const mid = (taps - 1) / 2;
-  const wc = (2 * Math.PI * cutoff) / sr;
-  const h = new Float32Array(taps);
-  let sum = 0;
-  for (let i = 0; i < taps; i++) {
-    const n = i - mid;
-    const sinc = n === 0 ? wc / Math.PI : Math.sin(wc * n) / (Math.PI * n);
-    const ham = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (taps - 1));
-    h[i] = sinc * ham;
-    sum += h[i];
-  }
-  for (let i = 0; i < taps; i++) h[i] /= sum;
-  return h;
-}
-
 export function resampleLinear(input, fromRate, toRate) {
   if (fromRate === toRate) return input;
   const ratio = fromRate / toRate;
-  const last = input.length - 1;
-  if (Math.abs(ratio - Math.round(ratio)) < 1e-9 && ratio >= 2) {
-    const r = Math.round(ratio);
-    const taps = lowpassTaps(31, toRate * 0.45, fromRate);
-    const half = (taps.length / 2) | 0;
-    const outLen = Math.max(1, Math.floor(input.length / r));
-    const out = new Float32Array(outLen);
-    for (let i = 0; i < outLen; i++) {
-      const center = i * r;
-      let s = 0;
-      for (let k = 0; k < taps.length; k++) {
-        const idx = center + k - half;
-        s += (idx >= 0 && idx <= last ? input[idx] : 0) * taps[k];
-      }
-      out[i] = s;
-    }
-    return out;
-  }
   const outLen = Math.max(1, Math.floor(input.length / ratio));
   const out = new Float32Array(outLen);
+  const last = input.length - 1;
   for (let i = 0; i < outLen; i++) {
     const x = i * ratio;
     const i0 = Math.min(last, x | 0);
@@ -191,7 +158,6 @@ export function analyze(samples, sampleRate, onProgress) {
   const centroid = new Float32Array(nFrames);
   const hnr = new Float32Array(nFrames);
   const sibilance = new Float32Array(nFrames);
-  const highBand = new Float32Array(nFrames);
   const zcr = new Float32Array(nFrames);
   const reject = new Uint8Array(nFrames);
 
@@ -205,19 +171,15 @@ export function analyze(samples, sampleRate, onProgress) {
   const qMax = Math.min(n / 2 - 1, Math.round(ANALYSIS_RATE / 65));
   const highBin = Math.max(2, Math.round(4000 / binHz));
 
-  // Center each analysis window on the hop it labels, so a frame at t
-  // is not actually looking 16 ms later.
-  const winCenter = (n / 2) | 0;
   for (let fi = 0; fi < nFrames; fi++) {
-    const off = fi * HOP + (HOP >> 1) - winCenter;
+    const off = fi * HOP;
     re.fill(0);
     im.fill(0);
     let rawE = 0;
     let crossings = 0;
     let prevS = 0;
     for (let i = 0; i < n; i++) {
-      const idx = off + i;
-      const s = idx >= 0 && idx < x.length ? x[idx] : 0;
+      const s = x[off + i] || 0;
       rawE += s * s;
       if (i && (s >= 0) !== (prevS >= 0)) crossings++;
       prevS = s;
@@ -252,7 +214,6 @@ export function analyze(samples, sampleRate, onProgress) {
     flatness[fi] = sumMag > 0 ? Math.exp(sumLog / bins) / (sumMag / bins) : 1;
     centroid[fi] = sumMag > 0 ? weighted / sumMag : 0;
     sibilance[fi] = totalP > 0 ? high / totalP : 0;
-    highBand[fi] = high / n;
 
     re.set(logMag);
     im.fill(0);
@@ -270,10 +231,9 @@ export function analyze(samples, sampleRate, onProgress) {
     hnr[fi] = bestC;
     f0[fi] = bestQ > 0 ? ANALYSIS_RATE / bestQ : 0;
 
-    let prev = off > 0 && off - 1 < x.length ? x[off - 1] : 0;
+    let prev = off > 0 ? x[off - 1] : 0;
     for (let i = 0; i < n; i++) {
-      const idx = off + i;
-      const s = idx >= 0 && idx < x.length ? x[idx] : 0;
+      const s = x[off + i] || 0;
       const pre = s - 0.97 * prev;
       prev = s;
       frame[i] = pre * window[i];
@@ -287,6 +247,7 @@ export function analyze(samples, sampleRate, onProgress) {
     const pitchOk = bestC > 0.08;
     const hiss = sibilance[fi] > 0.32 || zcr[fi] > 0.18;
     reject[fi] = hiss ? 1 : 0;
+    // Keep/drop is periodicity minus frication. Formants are labels only.
     voiced[fi] = pitchOk && !hiss ? 1 : 0;
 
     if (onProgress && (fi & 255) === 0) onProgress(fi / Math.max(1, nFrames));
@@ -298,15 +259,12 @@ export function analyze(samples, sampleRate, onProgress) {
   const p50 = energies.length ? energies[Math.floor(energies.length * 0.5)] : 1e-6;
   const speech = Math.max(p50 * 4, p95 * 0.15, 1e-8);
   const silenceThr = speech * 0.04;
-  const hissAbs = speech * 0.08;
 
   const kind = new Uint8Array(nFrames);
   for (let i = 0; i < nFrames; i++) {
-    // Ratio can hide S under a loud vowel; absolute high-band energy cannot.
-    if (highBand[i] > hissAbs) reject[i] = 1;
     if (energy[i] < silenceThr) kind[i] = 0;
     else if (reject[i]) kind[i] = 1;
-    else if (voiced[i]) kind[i] = 2;
+    else if (voiced[i] && hnr[i] > 0.07) kind[i] = 2;
     else kind[i] = 1;
   }
   fillTinySilenceHoles(kind, reject, 1);
@@ -329,7 +287,6 @@ export function analyze(samples, sampleRate, onProgress) {
     hnr,
     kind,
     sibilance,
-    highBand,
     zcr,
     reject,
     silenceThr,
