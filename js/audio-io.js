@@ -90,12 +90,6 @@ async function decodeWithMediabunny(file, ctx) {
   }
 }
 
-export function isVideoFile(file) {
-  if (!file) return false;
-  if (file.type.startsWith("video/")) return true;
-  return /\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name || "");
-}
-
 export async function loadMediaFile(file, ctx) {
   const copy = await file.arrayBuffer();
   try {
@@ -105,106 +99,22 @@ export async function loadMediaFile(file, ctx) {
   }
 }
 
-function audioBufferFromMono(ctx, samples, sampleRate) {
-  return samplesToAudioBuffer(ctx, samples, sampleRate);
-}
-
-async function loadBunny() {
-  return import("https://cdn.jsdelivr.net/npm/mediabunny@1.56.2/+esm");
-}
-
-async function muxVideoWithAudio(sourceFile, samples, sampleRate) {
-  const {
-    Input,
-    ALL_FORMATS,
-    BlobSource,
-    Output,
-    Mp4OutputFormat,
-    BufferTarget,
-    Conversion,
-    AudioBufferSource,
-    Quality,
-  } = await loadBunny();
-  const ctx = new AudioContext({ sampleRate });
-  const buf = audioBufferFromMono(ctx, samples, sampleRate);
-  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(sourceFile) });
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target: new BufferTarget(),
-  });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    audio: { discard: true },
-    composable: true,
-  });
-  const audioSource = new AudioBufferSource({
-    codec: "aac",
-    quality: new Quality("high"),
-  });
-  output.addAudioTrack(audioSource);
-  await output.start();
-  await Promise.all([
-    conversion.execute(),
-    audioSource.add(buf).then(() => audioSource.close()),
-  ]);
-  await output.finalize();
-  input.dispose();
-  return new Blob([output.target.buffer], { type: "video/mp4" });
-}
-
-async function encodeCompressedAudio(samples, sampleRate, kind) {
-  const {
-    Output,
-    Mp3OutputFormat,
-    Mp4OutputFormat,
-    BufferTarget,
-    AudioBufferSource,
-    Quality,
-  } = await loadBunny();
-  const ctx = new AudioContext({ sampleRate });
-  const buf = audioBufferFromMono(ctx, samples, sampleRate);
-  const mp3 = kind === "mp3";
-  const output = new Output({
-    format: mp3 ? new Mp3OutputFormat() : new Mp4OutputFormat(),
-    target: new BufferTarget(),
-  });
-  const audioSource = new AudioBufferSource({
-    codec: mp3 ? "mp3" : "aac",
-    quality: new Quality("high"),
-  });
-  output.addAudioTrack(audioSource);
-  await output.start();
-  await audioSource.add(buf);
-  await audioSource.close();
-  await output.finalize();
-  return new Blob([output.target.buffer], {
-    type: mp3 ? "audio/mpeg" : "audio/mp4",
-  });
-}
-
-export async function exportResult({ samples, sampleRate, sourceFile, name }) {
-  const base = (name || "audio").replace(/\.[^.]+$/, "");
-  try {
-    if (isVideoFile(sourceFile)) {
-      const blob = await muxVideoWithAudio(sourceFile, samples, sampleRate);
-      downloadBlob(blob, `${base}-vowels.mp4`);
-      return "mp4";
-    }
-    const lower = (name || "").toLowerCase();
-    if (lower.endsWith(".mp3")) {
-      const blob = await encodeCompressedAudio(samples, sampleRate, "mp3");
-      downloadBlob(blob, `${base}-vowels.mp3`);
-      return "mp3";
-    }
-    if (lower.endsWith(".m4a") || lower.endsWith(".aac")) {
-      const blob = await encodeCompressedAudio(samples, sampleRate, "m4a");
-      downloadBlob(blob, `${base}-vowels.m4a`);
-      return "m4a";
-    }
-  } catch (err) {
-    console.warn("matched-format export failed, writing wav", err);
+/** ffmpeg concat demuxer list. Sit it next to the original file. */
+export function encodeFfconcat(runs, sourceName) {
+  const file = (sourceName || "source").replace(/'/g, "'\\''");
+  const lines = ["ffconcat version 1.0"];
+  for (const run of runs) {
+    if (!run.keep) continue;
+    lines.push(`file '${file}'`);
+    lines.push(`inpoint ${run.cutStart.toFixed(6)}`);
+    lines.push(`outpoint ${run.cutEnd.toFixed(6)}`);
   }
+  return `${lines.join("\n")}\n`;
+}
+
+export function exportWavAndTimeline({ samples, sampleRate, runs, name }) {
+  const base = (name || "audio").replace(/\.[^.]+$/, "");
   downloadBlob(encodeWav(samples, sampleRate), `${base}-vowels.wav`);
-  return "wav";
+  const concat = encodeFfconcat(runs, name || "source");
+  downloadBlob(new Blob([concat], { type: "text/plain" }), `${base}-vowels.ffconcat`);
 }

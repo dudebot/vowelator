@@ -23,6 +23,39 @@ export const VOWELS = [
   { ipa: "ɔɪ", bucket: "OY",    name: "choice",  example: "boy",     f1: 590, f2: 900,  f3: 2400, diphthong: true },
 ];
 
+export const PRESETS = [
+  {
+    id: "grug",
+    name: "Grug",
+    hint: "cave mouth. oo / aw / oh",
+    ipa: ["ɑ", "ɔ", "oʊ", "ʊ", "u", "aʊ"],
+  },
+  {
+    id: "ghost",
+    name: "Ghost Tube",
+    hint: "thin haunted vents. ee / ih / uh",
+    ipa: ["i", "ɪ", "ɛ", "ə", "ɚ"],
+  },
+  {
+    id: "sock",
+    name: "Wet Sock",
+    hint: "eh aa uh. the argument got damp",
+    ipa: ["ɛ", "æ", "ə", "ʌ"],
+  },
+  {
+    id: "arr",
+    name: "Oops, All Arr",
+    hint: "only the r-colored ones. err urr er",
+    ipa: ["ɝ", "ɚ"],
+  },
+];
+
+export function keptFromPreset(id) {
+  const preset = PRESETS.find((p) => p.id === id) || PRESETS[0];
+  const on = new Set(preset.ipa);
+  return Object.fromEntries(VOWELS.map((v) => [v.ipa, on.has(v.ipa)]));
+}
+
 export const NON_VOWELS = [
   { ipa: "breath", bucket: "BREATH", keepDefault: false },
   { ipa: "noise",  bucket: "NOISE",  keepDefault: false },

@@ -1,7 +1,7 @@
-import { VOWELS, colorFor } from "./vowels.js";
+import { VOWELS, PRESETS, keptFromPreset, colorFor } from "./vowels.js";
 import { downmix } from "./dsp.js";
 import { findNuclei, erodeRuns, applyKeep, concatenate, extractSamples } from "./slicer.js";
-import { loadMediaFile, samplesToAudioBuffer, exportResult } from "./audio-io.js";
+import { loadMediaFile, samplesToAudioBuffer, exportWavAndTimeline } from "./audio-io.js";
 import { makeDemoBuffer } from "./synth.js";
 import { drawWaveform, drawSpectrogram, sizeCanvas } from "./draw.js";
 
@@ -17,7 +17,8 @@ const state = {
   analysisSamples: null,
   spec: null,
   runs: [],
-  kept: Object.fromEntries(VOWELS.map((v) => [v.ipa, true])),
+  kept: keptFromPreset("grug"),
+  preset: "grug",
   playing: null,
   playhead: null,
   playMode: null,
@@ -69,7 +70,30 @@ function outputSamples() {
   return concatenate(state.source, state.sourceRate, state.runs, fadeSec());
 }
 
+function applyPreset(id) {
+  state.preset = id;
+  state.kept = keptFromPreset(id);
+  for (const run of state.runs) delete run.keepManual;
+  rebuildRuns();
+}
+
+function renderPresets() {
+  const root = $("presets");
+  if (!root) return;
+  root.innerHTML = "";
+  for (const p of PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `preset ${state.preset === p.id ? "on" : ""}`;
+    b.textContent = p.name;
+    b.title = p.hint;
+    b.addEventListener("click", () => applyPreset(p.id));
+    root.appendChild(b);
+  }
+}
+
 function renderChips() {
+  renderPresets();
   const root = $("chips");
   root.innerHTML = "";
   for (const v of VOWELS) {
@@ -81,6 +105,7 @@ function renderChips() {
     b.title = `${v.name} — ${v.example}`;
     b.addEventListener("click", () => {
       state.kept[v.ipa] = !state.kept[v.ipa];
+      state.preset = null;
       rebuildRuns();
     });
     root.appendChild(b);
@@ -261,7 +286,8 @@ async function analyzeBuffer(audioBuffer, name, sourceFile = null) {
   state.analysisSamples = result.analysisSamples;
   state.spec = result.spec;
   state.runs = [];
-  state.kept = Object.fromEntries(VOWELS.map((v) => [v.ipa, true]));
+  if (!state.preset) state.preset = "grug";
+  state.kept = keptFromPreset(state.preset);
   setProgress(null);
   rebuildRuns();
 }
@@ -319,25 +345,19 @@ for (const id of ["erosion", "fade", "minDur"]) {
 $("playSrc").addEventListener("click", playSource);
 $("playVowels").addEventListener("click", playVowels);
 $("stop").addEventListener("click", stopPlayback);
-$("export").addEventListener("click", async () => {
+$("export").addEventListener("click", () => {
   const samples = outputSamples();
   if (!samples.length) {
     setStatus("Nothing to export.");
     return;
   }
-  try {
-    setStatus("Encoding…");
-    const kind = await exportResult({
-      samples,
-      sampleRate: state.sourceRate,
-      sourceFile: state.sourceFile,
-      name: state.name,
-    });
-    setStatus(`Exported .${kind}`);
-  } catch (err) {
-    console.error(err);
-    setStatus(err.message || String(err));
-  }
+  exportWavAndTimeline({
+    samples,
+    sampleRate: state.sourceRate,
+    runs: state.runs,
+    name: state.name,
+  });
+  setStatus("Saved .wav and .ffconcat — put the concat file next to the original for ffmpeg.");
 });
 
 window.addEventListener("resize", () => paint());

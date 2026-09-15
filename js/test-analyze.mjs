@@ -2,6 +2,8 @@ import { createFft } from "./fft.js";
 import { analyze } from "./dsp.js";
 import { makeDemoSamples } from "./synth.js";
 import { findNuclei, erodeRuns, concatenate } from "./slicer.js";
+import { encodeFfconcat } from "./audio-io.js";
+import { keptFromPreset } from "./vowels.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -52,4 +54,13 @@ const ratio = out.length / samples.length;
 console.log("kept ratio", ratio.toFixed(3), out.length, samples.length);
 assert(ratio < 0.92, "vowel-only output should drop the consonant/breath gaps");
 assert(out.length > sampleRate, "output should still contain the nuclei");
+const grug = keptFromPreset("grug");
+assert(grug["ɑ"] && grug["u"] && !grug["i"], "grug preset is back vowels only");
+const list = encodeFfconcat(
+  [{ keep: true, cutStart: 1.5, cutEnd: 2.25 }],
+  "rant.mp4",
+);
+assert(list.startsWith("ffconcat version 1.0"), "ffconcat header");
+assert(list.includes("file 'rant.mp4'"), "ffconcat names the source");
+assert(list.includes("inpoint 1.500000"), "ffconcat inpoint");
 console.log("ok");

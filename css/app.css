@@ -220,6 +220,25 @@ canvas {
   margin: 4px 0 10px;
 }
 
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.preset {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.preset.on {
+  background: var(--accent);
+  border-color: #ff704f;
+  color: #1a0c08;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
