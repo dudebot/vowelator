@@ -1,7 +1,7 @@
 import { VOWELS, PRESETS, keptFromPreset, colorFor } from "./vowels.js";
 import { downmix } from "./dsp.js";
 import { findNuclei, erodeRuns, applyKeep, concatenate, extractSamples } from "./slicer.js";
-import { loadMediaFile, samplesToAudioBuffer, exportWavAndTimeline } from "./audio-io.js";
+import { loadMediaFile, samplesToAudioBuffer, encodeWav, encodeFfconcat, downloadBlob } from "./audio-io.js";
 import { makeDemoBuffer } from "./synth.js";
 import { drawWaveform, drawSpectrogram, sizeCanvas } from "./draw.js";
 
@@ -342,22 +342,30 @@ for (const id of ["erosion", "fade", "minDur"]) {
   });
 }
 
+function exportBase() {
+  return (state.name || "audio").replace(/\.[^.]+$/, "");
+}
+
 $("playSrc").addEventListener("click", playSource);
 $("playVowels").addEventListener("click", playVowels);
 $("stop").addEventListener("click", stopPlayback);
-$("export").addEventListener("click", () => {
+$("exportWav").addEventListener("click", () => {
   const samples = outputSamples();
   if (!samples.length) {
     setStatus("Nothing to export.");
     return;
   }
-  exportWavAndTimeline({
-    samples,
-    sampleRate: state.sourceRate,
-    runs: state.runs,
-    name: state.name,
-  });
-  setStatus("Saved .wav and .ffconcat — put the concat file next to the original for ffmpeg.");
+  downloadBlob(encodeWav(samples, state.sourceRate), `${exportBase()}-vowels.wav`);
+  setStatus("Saved .wav");
+});
+$("exportConcat").addEventListener("click", () => {
+  if (!state.runs.some((r) => r.keep)) {
+    setStatus("Nothing to export.");
+    return;
+  }
+  const concat = encodeFfconcat(state.runs, state.name || "source");
+  downloadBlob(new Blob([concat], { type: "text/plain" }), `${exportBase()}-vowels.ffconcat`);
+  setStatus("Saved .ffconcat — put it next to the original for ffmpeg.");
 });
 
 window.addEventListener("resize", () => paint());

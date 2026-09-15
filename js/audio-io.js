@@ -112,9 +112,4 @@ export function encodeFfconcat(runs, sourceName) {
   return `${lines.join("\n")}\n`;
 }
 
-export function exportWavAndTimeline({ samples, sampleRate, runs, name }) {
-  const base = (name || "audio").replace(/\.[^.]+$/, "");
-  downloadBlob(encodeWav(samples, sampleRate), `${base}-vowels.wav`);
-  const concat = encodeFfconcat(runs, name || "source");
-  downloadBlob(new Blob([concat], { type: "text/plain" }), `${base}-vowels.ffconcat`);
-}
+
