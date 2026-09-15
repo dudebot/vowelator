@@ -54,6 +54,7 @@ function minDurSec() {
 
 function rebuildRuns() {
   if (!state.analysis) return;
+  if (state.playing) stopPlayback();
   const raw = findNuclei(state.analysis, { minDuration: minDurSec() });
   for (const run of raw) {
     const prev = state.runs.find((r) => Math.abs(r.start - run.start) < 0.02 && r.ipa === run.ipa);
